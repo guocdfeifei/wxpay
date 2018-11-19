@@ -14,7 +14,7 @@ import requests
 from xml.etree import ElementTree
 from dict2xml import dict2xml
 from collections import OrderedDict
-from urllib import urlencode
+from urllib.parse import urlencode
 from .exceptions import MissingParameter
 from .exceptions import ParameterValueError
 from .exceptions import TokenAuthorizationError
@@ -62,13 +62,32 @@ class WXpay(object):
         params_dict['key'] = self.key
 
         foo_sign = []
+        # print('params_dict',params_dict)
         for k in params_dict:
-            if isinstance(params_dict[k], unicode):
-                params_dict[k] = params_dict[k].encode('utf-8')
+            # if isinstance(params_dict[k], str): #unicode
+            #     params_dict[k] = str(params_dict[k]).encode('utf-8')
             foo_sign.append('%s=%s' % (k, params_dict[k], ))
+        # print('1foo_sign',foo_sign)
         foo_sign = '&'.join(foo_sign)
-        sign = hashlib.md5(foo_sign).hexdigest().upper()
+        # print('2foo_sign',foo_sign)
+        sign = hashlib.md5(foo_sign.encode("utf8")).hexdigest().upper()
         return sign
+
+    def generate_sign3(self, sign_dict):
+        ''' 生成签名, 目前只支持MD5签名 '''
+
+        '''根据数组的key排序，并拼接加密'''
+        a = ''
+        for key in (sorted(sign_dict.keys())):
+            if a == '':
+                a = key + '=' + str(sign_dict[key])
+            else:
+                a = a + '&' + key + '=' + str(sign_dict[key])
+        a = a + '&key=' + self.key
+        # md5加密
+        a = hashlib.md5(a.encode('utf-8')).hexdigest().upper()
+        return a
+
 
     def unifiedorder(self, product, openid=None, trade_type=None):
         ''' 统一下单接口 '''
@@ -90,10 +109,21 @@ class WXpay(object):
         }
         if trade_type == 'JSAPI' and openid is None:
             raise MissingParameter(u'JSAPI必须传入openid')
-        else:
-            post_dict['openid'] = openid
-        post_dict['sign'] = self.generate_sign(post_dict)
+        # else:
+        #     post_dict['openid'] = openid
+        post_dict['sign'] = self.generate_sign3(post_dict) #新版签名
+
         ret_xml = dict2xml(post_dict, wrap='xml')
+        # import ssl
+        # context = ssl._create_unverified_context()
+        # from requests.auth import HTTPBasicAuth
+        # auth = HTTPBasicAuth('fake@example.com', 'not_a_real_password')
+        # import ssl
+        # ssl._create_default_https_context = ssl._create_unverified_context
+        # import urllib3.contrib.pyopenssl
+        # urllib3.contrib.pyopenssl.inject_into_urllib3() verify=False
+        ret_xml=ret_xml
+        # print('ret_xml',ret_xml)
 
         r = requests.post(self.URL_UINFIEDORDER, data=ret_xml.encode('utf-8'))
         r.encoding = 'UTF-8'
@@ -170,7 +200,7 @@ class WXpay(object):
         xml_dict['total_fee'] = x.find('total_fee').text
         xml_dict['trade_type'] = x.find('trade_type').text
         xml_dict['transaction_id'] = x.find('transaction_id').text
-
+        # print('xml_dict',xml_dict)
         sign = xml_dict.pop('sign')
         if sign == self.generate_sign(xml_dict):
             return True, xml_dict
